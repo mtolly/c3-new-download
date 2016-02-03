@@ -1,0 +1,46 @@
+#!/usr/bin/env ruby
+
+require 'nokogiri'
+require 'open-uri'
+require 'yaml'
+
+def c3_search(string, page)
+  html = Nokogiri::HTML(open("http://pksage.com/ccc/IPS/index.php?/page/index.html?sort_col=record_updated&sort_order=desc&per_page=50&snarfblat=#{string}&st=#{(page - 1) * 50}"))
+  this_page = html.css('.page.active')[0]
+  return [] unless this_page && this_page.text.to_i == page
+  rows = html.css('.customdbtable tr')[1..-1]
+  rows.map do |row|
+    page = row.css('td')[2].css('a').attr('href').value.strip
+    artist = row.css('td')[1].css('b').text.strip
+    # limiting artist to the <b> ignores the PINNED badge
+    title = row.css('td')[2].text.strip
+    source = row.css('td')[3].text.strip
+    author = row.css('td')[6].text.strip
+    updated_date = row.css('td')[8].css('div')[0].text.strip
+    original_date_div = row.css('td')[8].css('div')[1]
+    original_date = original_date_div ? original_date_div.text.strip : nil
+    info = row.css('td')[4].css('img').map { |i| i.attr('title').strip }
+    links = row.css('td')[5].css('a').map do |link|
+      label = link.attr('title').strip
+      link = link.attr('href').strip
+      {"label" => label, "link" => link}
+    end
+    {"page" => page, "artist" => artist, "title" => title, "source" => source, "info" => info, "author" => author, "updated_date" => updated_date, "original_date" => original_date, "links" => links}
+  end
+end
+
+def c3_search_all(string)
+  res = []
+  page = 1
+  until (res_page = c3_search(string, page)).empty?
+    res += res_page
+    page += 1
+  end
+  res
+end
+
+unless ARGV.length == 2
+  STDERR.puts "Usage: #{$0} \"search string\" out.yaml"
+  exit 1
+end
+File.write(ARGV[1], c3_search_all(ARGV[0]).to_yaml)
